@@ -6,3 +6,7 @@
 	path = omz
 	url = git@github.com:ohmyzsh/ohmyzsh.git
 	branch = master
+[submodule "zsh_async"]
+	path = zsh_async
+	url = git@github.com:mafredri/zsh-async.git
+	branch = master

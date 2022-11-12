@@ -1,4 +1,4 @@
-alias aws_shell="~/storage/ssh/connect.sh"
+alias aws_shell="$HOME/storage/ssh/connect.sh"
 alias cls="clear"
 alias shell="python manage.py shell"
 alias runserver="python manage.py runserver"
@@ -7,6 +7,8 @@ alias migrate="python manage.py migrate"
 alias -g gcp="git cherry-pick"
 alias -g vim="hx"
 alias -g nvim="hx"
+alias zshconf="hx $HOME/.zshrc"
+alias fmk="code $HOME/.zsh/fmk"
 # creates token for loggin in kubernetes dashboard for admin-user
 alias ktoken="kubectl -n kubernetes-dashboard create token admin-user | tr -d '\n' | pbcopy"
 
@@ -20,6 +22,7 @@ function clc {
    LAST_COMMIT_SHA=$(git rev-parse $BRANCH | tail -n 1)
    echo "$LAST_COMMIT_SHA" | tr -d '\n' | pbcopy
    echo "Copied ${COLOR_GREEN}${LAST_COMMIT_SHA} ${COLOR_RESET}from ${BRANCH}."
+   unset COLOR_GREEN COLOR_RESET LAST_COMMIT_SHA BRANCH
 }
 
 # Prints latest commit from current branch or the branch specified
@@ -29,6 +32,7 @@ function cle {
     [[ -z $1 ]] && BRANCH=$(git rev-parse --abbrev-ref HEAD) || BRANCH=$1
     LAST_COMMIT_SHA=$(git rev-parse $BRANCH | tail -n 1)
     echo "$LAST_COMMIT_SHA" | tr -d '\n'
+    unset COLOR_GREEN COLOR_RESET LAST_COMMIT_SHA BRANCH
 }
 
 # Cherry pick the lastest commit of specified branch into current branch
