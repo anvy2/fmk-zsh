@@ -1,0 +1,8 @@
+[submodule "zsh_defer"]
+	path = zsh_defer
+	url = git@github.com:romkatv/zsh-defer.git
+	branch = master
+[submodule "omz"]
+	path = omz
+	url = git@github.com:ohmyzsh/ohmyzsh.git
+	branch = master
