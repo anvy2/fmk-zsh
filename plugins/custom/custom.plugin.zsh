@@ -78,6 +78,7 @@ cpr() {
   fi
 }
 
+# ssh into instance containing kubernetes pod
 ssh_pod() {
 DEFAULT_K_NAMESPACE=`kubectl config view --minify -o jsonpath='{..namespace}'` 
 if [[ -z $1 ]] || [[ -z $2 ]];
@@ -91,7 +92,7 @@ elif [[ -z $3 ]];
 		echo "Found no $1 ip for $2 in $DEFAULT_K_NAMESPACE namespace"
 		unset DEFAULT_K_NAMESPACE
 		unset node_ip
-		return 0
+		return 1
 	fi
 	echo "Connecting to pod $2 in $DEFAULT_K_NAMESPACE namespace in $1"
 	jumper $1 $node_ip
@@ -103,14 +104,13 @@ else
                 echo "Found no $1 ip for $2 in $3 namespace"
                 unset DEFAULT_K_NAMESPACE
                 unset NODE_IP
-                return 0
+                return 1
         fi
 	echo "Connecting to node of pod $2 in $3 namespace in $1 environment"
 	jumper $1 $NODE_IP
 	unset NODE_IP
 fi
 unset DEFAULT_K_NAMESPACE
-
 }
 
 # Switch kubernetes context
@@ -131,8 +131,8 @@ ctx() {
  esac
 }
 
-
-function ec2_iam_role {
+# show/update/assign iam role to a ec2 instance
+function eimr {
   if [[ -z $1 ]] || [[ -z $2 ]] || [[ $1 != "show" && -z $3 ]];
     then
       echo "Need operation, instance id and role name. Use ec2_iam_role <operation(assign/update/show)> <instance_id> <role_name>"
@@ -142,11 +142,11 @@ function ec2_iam_role {
   elif [[ $1 == "assign" || $1 == "update" ]];
     then
     role_exist=`aws iam get-role --role-name $3`
-    [[ -z $role_exist ]] && unset role_exist && return 0
+    [[ -z $role_exist ]] && unset role_exist && return 1
     if [[ $1 == "update" ]];
       then
         association_id=`aws ec2 describe-iam-instance-profile-associations --filters "Name=instance-id,Values=$2" | xargs echo | sed -rn 's/.*AssociationId: ([(a-zA-Z0-9)|-]*),.*/\1/p'`
-        [[ -z $association_id ]] && echo "Either instance id is invalid or No association id exist for instance $2. Try using the assign operation." && unset association_id && return 0
+        [[ -z $association_id ]] && echo "Either instance id is invalid or No association id exist for instance $2. Try using the assign operation." && unset association_id && return 1
         aws ec2 disassociate-iam-instance-profile --association-id $association_id
         unset association_id
     fi
@@ -156,38 +156,80 @@ function ec2_iam_role {
   else
     echo "Invalid command ec2_iam_role $1 $2 $3. Use ec2_iam_role <operation(assign/update/show)> <instance_id> <role_name>"
   fi
+  return 0
 }
 
+
+# Show ec2 instance id for a kubernetes node with its name
 function kgid {
   if [[ -z $1 ]];
     then
       echo "Need node name. Use kgid <node_name>"
+      return 1
   else
     kubectl describe node $1 | grep ProviderID | sed -nE 's/.*(i-.*)/\1/p'
   fi
+  return 0
 }
 
+# Prints Arn for kubernetes nodes
+function pni {
+  kubectl get nodes -o=jsonpath='{range .items[*]}{.spec.providerID}{"\n"}'
+}
+
+# Prints role of an ec2 instance
+function girole {
+  [[ -z $1 ]] && echo "Need instance id. Use gri <instance_id>" && return 1
+  eimr show $1 | xargs echo | sed -nr 's/.*Arn.*instance-profile\/(.*), Id.*/\1/p'
+  return 0
+}
+
+# Change role of all kubernetes nodes to specified
+function nrc {
+  [[ -z $1 ]] && echo "Need role name. Use nrc <role_name>" && return 1
+  local a=`kubectl get nodes -o=jsonpath='{range .items[*]}{.spec.providerID}{"\t"}'`
+  local arr=($(echo $a | tr "[\t]" "\n"))
+  for f in $arr; do
+    local instance_id=`echo $f | sed -nE 's/.*(i-.*)/\1/p'`
+    [[ -z $instance_id ]]  && continue
+    echo "================$instance_id START======================\n"
+    echo "Updating role for instance $instance_id with role $1"
+    local ra=`girole $instance_id`
+    if [[ $ra == $1 ]]; 
+      then
+        echo "Instance $instance_id already has role $1"
+    elif eimr update $instance_id $1;
+      then
+        echo "Done updating role $1 for instance $instance_id"
+    else
+      echo "Error in updating role $1 for instance $instance_id"
+    fi
+    echo "\n==================$instance_id FINISHED =======================\n\n"
+  done
+}
 
 #Runs aws codepipeline
 function cpline {
   [[ -z $2 ]] && aws_profile=`[[ -z $AWS_PROFILE ]] && echo default || echo $AWS_PROFILE` || aws_profile=$2
-  [[ -z $1 ]] && echo "Need pipeline name. Use cpline <pipeline_name> <profile_name(optional)>. Uses default/configured profile if not specified." && return 0
+  [[ -z $1 ]] && echo "Need pipeline name. Use cpline <pipeline_name> <profile_name(optional)>. Uses default/configured profile if not specified." && return 1
   aws codepipeline start-pipeline-execution --name $1 --profile $aws_profile
   unset aws_profile
 }
 
+# Prints pid of process running at specified port
 function find_process {
-  [[ -z $1 ]] && echo "Need port number. Use find_process <port_number>" && return 0
+  [[ -z $1 ]] && echo "Need port number. Use find_process <port_number>" && return 1
   lsof -nP -iTCP -sTCP:LISTEN | grep $1 | xargs echo
   pid=`lsof -nP -iTCP -sTCP:LISTEN | grep $1 | sed -nrE "s/.* ([0-9]+) \`whoami\`.*/\1/p"`
   echo "PID = $pid"
   unset pid
 }
 
+# Kills process running at specified port
 function stop_process {
-    [[ -z $1 ]] && echo "Need port number. Use stop_process <port_number>" && return 0
+    [[ -z $1 ]] && echo "Need port number. Use stop_process <port_number>" && return 1
     pid=`lsof -nP -iTCP -sTCP:LISTEN | grep $1 | sed -nrE "s/.* ([0-9]+) \`whoami\`.*/\1/p"`
-    [[ -z $pid ]] && echo "No process at port $1" && return 0
+    [[ -z $pid ]] && echo "No process at port $1" && return 1
     kill -9 $pid
     echo "Process at pid $pid is killed"
     unset pid
